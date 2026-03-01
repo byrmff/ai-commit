@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# gac - Git Auto Commit using Claude API
+# Usage: gac [optional context hint]
+# Setup:
+#   chmod +x gac
+#   mv gac /usr/local/bin/gac  (or ~/bin/gac)
+#   export ANTHROPIC_API_KEY=sk-...  (add to ~/.bashrc or ~/.zshrc)
+
+set -e
+
+API_KEY="${ANTHROPIC_API_KEY:-}"
+if [[ -z "$API_KEY" ]]; then
+  echo "❌ ANTHROPIC_API_KEY is not set." >&2
+  exit 1
+fi
+
+# Must be inside a git repo
+if ! git rev-parse --git-dir > /dev/null 2>&1; then
+  echo "❌ Not a git repository." >&2
+  exit 1
+fi
+
+# Check for staged changes
+STAGED_DIFF=$(git diff --cached)
+if [[ -z "$STAGED_DIFF" ]]; then
+  echo "⚠️  No staged changes. Run 'git add' first." >&2
+  exit 1
+fi
+
+STAGED_FILES=$(git diff --cached --name-status)
+CONTEXT_HINT="${1:-}"
+
+# Truncate diff to avoid token overflow (~6000 chars)
+MAX_DIFF_LENGTH=6000
+if [[ ${#STAGED_DIFF} -gt $MAX_DIFF_LENGTH ]]; then
+  STAGED_DIFF="${STAGED_DIFF:0:$MAX_DIFF_LENGTH}
+... [diff truncated]"
+fi
+
+echo "🔍 Analyzing staged changes..."
+
+# Build prompt
+PROMPT="You are a Git commit message generator. Analyze the staged diff and produce a concise, conventional commit message.
+
+Rules:
+- Use Conventional Commits format: type(scope): subject
+- Types: feat, fix, refactor, chore, docs, style, test, perf, ci
+- Subject: imperative mood, max 72 chars, no period
+- If needed, add a short body (after blank line) for non-obvious context
+- Output ONLY the commit message, nothing else
+
+Staged files:
+${STAGED_FILES}
+
+Diff:
+${STAGED_DIFF}
+${CONTEXT_HINT:+"Additional context from developer: $CONTEXT_HINT"}"
+
+# Call Claude API
+RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -d "$(jq -n \
+    --arg model "claude-haiku-4-5-20251001" \
+    --arg prompt "$PROMPT" \
+    '{
+      model: $model,
+      max_tokens: 256,
+      messages: [{role: "user", content: $prompt}]
+    }'
+  )")
+
+# Extract message
+COMMIT_MSG=$(echo "$RESPONSE" | jq -r '.content[0].text // empty' 2>/dev/null)
+
+if [[ -z "$COMMIT_MSG" ]]; then
+  echo "❌ Failed to generate commit message. API response:" >&2
+  echo "$RESPONSE" | jq '.' >&2
+  exit 1
+fi
+
+# Show and confirm
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📝 Generated commit message:"
+echo ""
+echo "$COMMIT_MSG"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo -n "Commit with this message? [Y/n/e(dit)] "
+read -r CONFIRM
+
+case "$CONFIRM" in
+  [nN])
+    echo "❌ Commit aborted."
+    exit 0
+    ;;
+  [eE])
+    # Open in editor for manual tweaking
+    TMPFILE=$(mktemp /tmp/gac_commit_XXXXXX.txt)
+    echo "$COMMIT_MSG" > "$TMPFILE"
+    "${EDITOR:-nano}" "$TMPFILE"
+    COMMIT_MSG=$(cat "$TMPFILE")
+    rm -f "$TMPFILE"
+    if [[ -z "$COMMIT_MSG" ]]; then
+      echo "❌ Empty message. Aborting."
+      exit 1
+    fi
+    echo ""
+    echo "📝 Final message:"
+    echo "$COMMIT_MSG"
+    echo ""
+    ;;
+esac
+
+git commit -m "$COMMIT_MSG"
+echo ""
+echo "✅ Committed successfully."
