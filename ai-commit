@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
-# gac - Git Auto Commit using Claude API
-# Usage: gac [optional context hint]
+# ai-commit - Git Auto Commit using Claude API
+# Usage: ai-commit [optional context hint]
 # Setup:
-#   chmod +x gac
-#   mv gac /usr/local/bin/gac  (or ~/bin/gac)
-#   export ANTHROPIC_API_KEY=sk-...  (add to ~/.bashrc or ~/.zshrc)
+#   chmod +x ai-commit
+#   mv ai-commit /usr/local/bin/ai-commit
+#   echo 'ANTHROPIC_API_KEY=sk-ant-...' | sudo tee /etc/ai-commit/config
 
 set -e
+
+# Load config (precedence: system < user < project < env)
+SYSTEM_CONFIG="/etc/ai-commit/config"
+USER_CONFIG="$HOME/.ai-commit/config"
+PROJECT_CONFIG=".ai-commit/config"
+
+[[ -f "$SYSTEM_CONFIG" ]]  && source "$SYSTEM_CONFIG"
+[[ -f "$USER_CONFIG" ]]    && source "$USER_CONFIG"
+[[ -f "$PROJECT_CONFIG" ]] && source "$PROJECT_CONFIG"
 
 API_KEY="${ANTHROPIC_API_KEY:-}"
 if [[ -z "$API_KEY" ]]; then
   echo "❌ ANTHROPIC_API_KEY is not set." >&2
+  echo "   Set it in /etc/ai-commit/config, ~/.ai-commit/config, or export ANTHROPIC_API_KEY=sk-ant-..." >&2
   exit 1
 fi
 
@@ -31,7 +41,7 @@ STAGED_FILES=$(git diff --cached --name-status)
 CONTEXT_HINT="${1:-}"
 
 # Truncate diff to avoid token overflow (~6000 chars)
-MAX_DIFF_LENGTH=6000
+MAX_DIFF_LENGTH="${AI_COMMIT_MAX_DIFF:-6000}"
 if [[ ${#STAGED_DIFF} -gt $MAX_DIFF_LENGTH ]]; then
   STAGED_DIFF="${STAGED_DIFF:0:$MAX_DIFF_LENGTH}
 ... [diff truncated]"
@@ -62,7 +72,7 @@ RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
   -H "x-api-key: $API_KEY" \
   -H "anthropic-version: 2023-06-01" \
   -d "$(jq -n \
-    --arg model "claude-haiku-4-5-20251001" \
+    --arg model "${AI_COMMIT_MODEL:-claude-haiku-4-5-20251001}" \
     --arg prompt "$PROMPT" \
     '{
       model: $model,
@@ -98,7 +108,7 @@ case "$CONFIRM" in
     ;;
   [eE])
     # Open in editor for manual tweaking
-    TMPFILE=$(mktemp /tmp/gac_commit_XXXXXX.txt)
+    TMPFILE=$(mktemp /tmp/ai_commit_XXXXXX.txt)
     echo "$COMMIT_MSG" > "$TMPFILE"
     "${EDITOR:-nano}" "$TMPFILE"
     COMMIT_MSG=$(cat "$TMPFILE")
