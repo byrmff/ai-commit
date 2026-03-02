@@ -17,7 +17,7 @@ error()   { echo -e "${RED}[ai-commit]${NC} $*" >&2; exit 1; }
 
 # ─── Root check ──────────────────────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
-    error "Run with sudo: curl -fsSL https://byrmff.github.io/ai-commit/install.sh | sudo bash"
+    error "Run with sudo: curl -fsSL https://raw.githubusercontent.com/byrmff/ai-commit/refs/heads/main/install.sh | sudo bash"
 fi
 
 # ─── Deps check ──────────────────────────────────────────────────────────────
