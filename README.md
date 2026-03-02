@@ -46,7 +46,7 @@ Config is loaded from `/etc/ai-commit/config`, overridden by `~/.config/ai-commi
 ## Install specific version
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourgithubuser/ai-commit/main/install.sh | sudo bash -s v1.0.0
+curl -fsSL https://byrmff.github.io/ai-commit/install.sh | sudo bash -s v1.0.0
 ```
 
 ## Uninstall
