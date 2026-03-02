@@ -10,7 +10,7 @@ AI-powered git commit message generator using Claude. Analyzes your staged chang
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yourgithubuser/ai-commit/main/install.sh | sudo bash
+curl -fsSL https://byrmff.github.io/ai-commit/install.sh | sudo bash
 ```
 
 Then add your API key:
